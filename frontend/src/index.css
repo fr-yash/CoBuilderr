@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+.chatArea::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom styles for AI message markdown rendering */
+.ai-message-content {
+  line-height: 1.5;
+}
+
+.ai-message-content pre {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ai-message-content code {
+  background-color: #f1f3f4;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+}
+
+.ai-message-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.ai-message-content blockquote {
+  border-left: 4px solid #28a745;
+  margin: 8px 0;
+  padding-left: 12px;
+  color: #6c757d;
+  font-style: italic;
+}
+
+.ai-message-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 12px;
+}
+
+.ai-message-content th,
+.ai-message-content td {
+  border: 1px solid #dee2e6;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.ai-message-content th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+/* File tabs styling */
+.file-tabs {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #374151;
+}
+
+.file-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.file-tabs::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.file-tabs::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 2px;
+}
+
+.file-tabs::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* File editor textarea styling */
+.file-editor-textarea {
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.file-editor-textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px #3b82f6;
+}
