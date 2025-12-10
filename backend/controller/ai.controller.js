@@ -1,4 +1,4 @@
-import {generateResult} from "../services/ai.service.js";;
+import {generateResult} from "../services/ai.service.js";
 
 export const generateResultController = async(req,res)=>{
     try {

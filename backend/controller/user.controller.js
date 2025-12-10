@@ -57,7 +57,21 @@ export const profileController = async(req,res)=>{
 export const logoutController = async(req,res)=>{
     try{
         const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
-        redisClient.set(token,'logout','EX',60*60*24);
+
+        // Try to blacklist token in Redis if connected
+        try {
+            if (redisClient.isOpen) {
+                await redisClient.set(token, 'logout', {
+                    EX: 60 * 60 * 24 // 24 hours
+                });
+            } else {
+                console.log('Redis not connected, skipping token blacklist');
+            }
+        } catch (redisError) {
+            console.error('Redis error during logout:', redisError.message);
+            // Continue with logout even if Redis fails
+        }
+
         res.status(200).json({message: "Logged out successfully"});
     }
     catch(err){

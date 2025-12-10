@@ -1,11 +1,19 @@
 import {GoogleGenerativeAI} from "@google/generative-ai";
 
+// Check if API key is available
+if (!process.env.GOOGLE_API_KEY) {
+    console.error('WARNING: GOOGLE_API_KEY is not set in environment variables');
+}
+
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+
+// Use gemini-1.5-flash-latest for better availability and lower quota usage
 const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash",
     generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.4,
+        maxOutputTokens: 8192,
     },
     systemInstruction: `You are an expert in MERN and Development. You have an experience of 10 years in the development. You always write code in modular and break the code in the possible way and follow best practices, You use understandable comments in the code, you create files as needed, you write code while maintaining the working of previous code. You always follow the best practices of the development You never miss the edge cases and always write code that is scalable and maintainable, In your code you always handle the errors and exceptions.
 
@@ -234,6 +242,18 @@ export const generateResult = async (prompt) => {
         }
     } catch (error) {
         console.error('Error generating AI response:', error);
+
+        // Handle specific error types
+        if (error.status === 429) {
+            throw new Error('AI service quota exceeded. Please try again later or check your Google API billing settings.');
+        } else if (error.status === 403) {
+            throw new Error('AI service access denied. Please check your Google API key permissions.');
+        } else if (error.status === 400) {
+            throw new Error('Invalid request to AI service. Please check your prompt.');
+        } else if (!process.env.GOOGLE_API_KEY) {
+            throw new Error('Google API key is not configured. Please set GOOGLE_API_KEY in your environment variables.');
+        }
+
         throw new Error(`AI service error: ${error.message}`);
     }
 }
