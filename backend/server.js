@@ -75,6 +75,15 @@ io.on('connection', socket => {
         // Always emit the original message first (immediately)
         io.to(socket.roomId).emit('project-message', message);
 
+        // Save user message to database
+        try {
+            await projectModel.findByIdAndUpdate(socket.roomId, {
+                $push: { messages: message }
+            });
+        } catch (error) {
+            console.error('Failed to save user message to DB:', error);
+        }
+
         // Then check if AI processing is needed
         const data = message.text;
         const aiIsIncludedInMessage = data.includes("@ai");
@@ -103,6 +112,7 @@ io.on('connection', socket => {
                     text: responseText,
                     sender: "AI",
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    hasFileTree: !!fileTree, // Flag for historic UI
                     fileTree: fileTree,
                     buildCommand: buildCommand,
                     startCommand: startCommand
@@ -110,6 +120,19 @@ io.on('connection', socket => {
 
                 console.log('Sending AI message with fileTree:', !!aiMessage.fileTree);
                 io.to(socket.roomId).emit('project-message', aiMessage);
+
+                // Save AI message and global fileTree to DB
+                try {
+                    const dbAiMessage = { ...aiMessage };
+                    delete dbAiMessage.fileTree; // Prevent MongoDB overload history
+                    const updateObj = { $push: { messages: dbAiMessage } };
+                    if (fileTree) {
+                        updateObj.fileTree = fileTree; // Overwrite the global project fileTree!
+                    }
+                    await projectModel.findByIdAndUpdate(socket.roomId, updateObj);
+                } catch(err) {
+                    console.error('Failed to save AI message and FileTree to DB:', err);
+                }
             } catch (error) {
                 console.error('Error handling AI request:', error);
 
@@ -122,6 +145,17 @@ io.on('connection', socket => {
                 };
                 io.to(socket.roomId).emit('project-message', errorMessage);
             }
+        }
+    });
+
+    socket.on('update-file-tree', async (newFileTree) => {
+        try {
+            console.log("Saving manual file tree edit to DB...");
+            await projectModel.findByIdAndUpdate(socket.roomId, { fileTree: newFileTree });
+            // Broadcast the update to OTHER clients in the room (not the sender)
+            socket.to(socket.roomId).emit('file-tree-updated', newFileTree);
+        } catch (error) {
+            console.error('Failed to manually update file tree:', error);
         }
     });
 

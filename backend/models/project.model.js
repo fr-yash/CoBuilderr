@@ -13,7 +13,17 @@ const projectScheme = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true,
-    }]
+    }],
+
+    fileTree: {
+        type: Object,
+        default: null
+    },
+
+    messages: {
+        type: Array,
+        default: []
+    }
 })
 
 const Project = mongoose.model("Project",projectScheme);

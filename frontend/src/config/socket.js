@@ -27,6 +27,12 @@ export const sendMessage = (message) => {
     }
 }
 
+export const emitEvent = (eventName, data) => {
+    if (socketInstance) {
+        socketInstance.emit(eventName, data);
+    }
+}
+
 export const disconnectSocket = () => {
     if (socketInstance) {
         socketInstance.disconnect();

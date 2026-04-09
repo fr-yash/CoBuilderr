@@ -17,7 +17,7 @@ const corsOrigins = process.env.FRONTEND_URLS
   : process.env.NODE_ENV === 'production' 
     ? [] // No fallback in production - must be explicitly set
     : ["http://localhost:5173", "http://localhost:5174"]; // Development fallback
-
+ 
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));

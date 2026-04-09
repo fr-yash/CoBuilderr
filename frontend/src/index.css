@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-gray-900/60 backdrop-blur-md border border-gray-700/50 shadow-xl;
+  }
+  .glass-card {
+    @apply bg-gray-800/80 backdrop-blur-sm border border-gray-700 hover:border-gray-500 transition-all duration-300 shadow-lg hover:shadow-cyan-500/10;
+  }
+  .glass-modal {
+    @apply bg-gray-900/80 backdrop-blur-lg border border-gray-700 shadow-2xl;
+  }
+}
+
 .chatArea::-webkit-scrollbar {
   display: none;
 }
