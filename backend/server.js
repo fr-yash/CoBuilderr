@@ -17,15 +17,22 @@ const port = process.env.PORT || 3001;
 const server = http.createServer(app);
 
 // Parse CORS origins from environment variable for Socket.IO
-const corsOrigins = process.env.FRONTEND_URLS 
-  ? process.env.FRONTEND_URLS.split(',').map(url => url.trim())
-  : process.env.NODE_ENV === 'production' 
+const corsOrigins = process.env.FRONTEND_URLS
+  ? process.env.FRONTEND_URLS.split(',').map(url => url.trim()).filter(Boolean)
+  : process.env.NODE_ENV === 'production'
     ? [] // No fallback in production - must be explicitly set
     : ["http://localhost:5173"]; // Development fallback
 
+const socketCorsOriginHandler = (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (corsOrigins.includes(origin)) return callback(null, true);
+    console.warn(`Socket.IO CORS rejected origin: ${origin}. Allowed: ${JSON.stringify(corsOrigins)}`);
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+};
+
 const io = new Server(server,{
     cors: {
-        origin: corsOrigins,
+        origin: socketCorsOriginHandler,
         methods: ["GET", "POST"],
         allowedHeaders: ["my-custom-header"],
         credentials: true
