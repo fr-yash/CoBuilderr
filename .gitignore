@@ -175,3 +175,21 @@ Dockerfile.dev
 .yarn/install-state.gz
 .pnp.*
 
+# Codex / local agent workspace
+.codex_tmp/
+
+# Project report, thesis, and research artifacts
+# Keep these local unless you intentionally want to publish the report assets.
+docs/
+Research Papers/
+tools/
+thesis_structure.jpg.jpeg
+
+# Local Office/document work files
+~$*.docx
+*.tmp
+
+# App runtime uploads / generated files
+uploads/
+backend/uploads/
+frontend/.vite/

@@ -86,6 +86,12 @@ io.on('connection', socket => {
 
         // Then check if AI processing is needed
         const data = message.text;
+        
+        // Prevent crashes on invalid message payloads
+        if (!data || typeof data !== 'string') {
+            return;
+        }
+        
         const aiIsIncludedInMessage = data.includes("@ai");
 
         if(aiIsIncludedInMessage){
@@ -127,7 +133,7 @@ io.on('connection', socket => {
                     delete dbAiMessage.fileTree; // Prevent MongoDB overload history
                     const updateObj = { $push: { messages: dbAiMessage } };
                     if (fileTree) {
-                        updateObj.fileTree = fileTree; // Overwrite the global project fileTree!
+                        updateObj.$set = { fileTree: fileTree }; // Use proper $set operator
                     }
                     await projectModel.findByIdAndUpdate(socket.roomId, updateObj);
                 } catch(err) {
@@ -157,6 +163,11 @@ io.on('connection', socket => {
         } catch (error) {
             console.error('Failed to manually update file tree:', error);
         }
+    });
+
+    socket.on('ai-code:inserted', (payload) => {
+        // Notification-only event. Generated code is never executed on the server.
+        socket.to(socket.roomId).emit('ai-code:inserted', payload);
     });
 
     socket.on('disconnect', () => { 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Edit2, Save, X, FileTerminal } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 
 const FileViewer = ({
   openFiles,
@@ -17,13 +17,14 @@ const FileViewer = ({
   const [editContent, setEditContent] = useState('');
 
   const isEditing = activeFile && editingFiles[activeFile.name];
+  const displayLines = (activeFile?.content || '').split('\n');
 
   const handleCopyContent = async () => {
     if (activeFile && activeFile.content) {
       try {
         await navigator.clipboard.writeText(activeFile.content);
         toast.success("Copied to clipboard!");
-      } catch (err) {
+      } catch {
         toast.error("Failed to copy");
       }
     }
@@ -49,32 +50,69 @@ const FileViewer = ({
     }
   };
 
-  const handleContentChange = (e) => {
-    const newContent = e.target.value;
+  const updateEditingContent = (newContent) => {
     setEditContent(newContent);
     if (activeFile) {
       onFileContentChange(activeFile.name, newContent);
     }
   };
 
+  const handleContentChange = (e) => {
+    const newContent = e.target.value;
+    updateEditingContent(newContent);
+  };
+
+  const handleEditorKeyDown = (e) => {
+    if (e.key !== 'Tab' && e.key !== 'Enter') return;
+
+    const textarea = e.currentTarget;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const nextContent = `${editContent.slice(0, start)}  ${editContent.slice(end)}`;
+      updateEditingContent(nextContent);
+      requestAnimationFrame(() => {
+        textarea.selectionStart = start + 2;
+        textarea.selectionEnd = start + 2;
+      });
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const lineStart = editContent.lastIndexOf('\n', start - 1) + 1;
+      const currentLine = editContent.slice(lineStart, start);
+      const indentation = currentLine.match(/^\s*/)?.[0] || '';
+      const nextContent = `${editContent.slice(0, start)}\n${indentation}${editContent.slice(end)}`;
+      updateEditingContent(nextContent);
+      requestAnimationFrame(() => {
+        const nextPosition = start + 1 + indentation.length;
+        textarea.selectionStart = nextPosition;
+        textarea.selectionEnd = nextPosition;
+      });
+    }
+  };
+
   if (!activeFile) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-[#0d1117]">
-        <motion.div 
+        <Motion.div 
           initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
           animate={{ opacity: 1, scale: 1, rotate: 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 20 }}
           className="w-16 h-16 bg-gray-900 border border-gray-800 flex items-center justify-center rounded-2xl mb-4"
         >
           <FileTerminal className="w-8 h-8 text-gray-600" />
-        </motion.div>
-        <motion.p 
+        </Motion.div>
+        <Motion.p 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-gray-400 font-medium text-sm"
         >
           Select a file to view its contents
-        </motion.p>
+        </Motion.p>
       </div>
     );
   }
@@ -86,7 +124,7 @@ const FileViewer = ({
         <div className="flex overflow-x-auto file-tabs bg-gray-900 border-b border-gray-800">
           <AnimatePresence initial={false}>
             {openFiles.map((file) => (
-              <motion.div
+              <Motion.div
                 key={file.name}
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -100,7 +138,7 @@ const FileViewer = ({
               >
                 {/* Active Indicator Line */}
                 {activeFile.name === file.name && (
-                  <motion.div
+                  <Motion.div
                     layoutId="activeTabIndicator"
                     className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -127,7 +165,7 @@ const FileViewer = ({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>
@@ -141,7 +179,7 @@ const FileViewer = ({
         <div className="flex items-center gap-2">
           <AnimatePresence mode="wait">
             {isEditing ? (
-              <motion.div 
+              <Motion.div 
                 key="editing-actions"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -160,9 +198,9 @@ const FileViewer = ({
                 >
                   <Save className="w-3.5 h-3.5" /> Save
                 </button>
-              </motion.div>
+              </Motion.div>
             ) : (
-              <motion.div
+              <Motion.div
                 key="viewing-actions"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -182,7 +220,7 @@ const FileViewer = ({
                 >
                   <Edit2 className="w-3.5 h-3.5" /> Edit
                 </button>
-              </motion.div>
+              </Motion.div>
             )}
           </AnimatePresence>
         </div>
@@ -192,7 +230,7 @@ const FileViewer = ({
       <div className="flex-1 overflow-hidden relative bg-[#0a0d12]">
         <AnimatePresence mode="wait">
           {isEditing ? (
-            <motion.textarea
+            <Motion.textarea
               key={`edit-${activeFile.name}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -200,23 +238,34 @@ const FileViewer = ({
               transition={{ duration: 0.15 }}
               value={editContent}
               onChange={handleContentChange}
-              className="absolute inset-0 w-full h-full p-4 bg-[#0a0d12] text-gray-300 font-mono text-[13px] leading-relaxed resize-none border-none outline-none focus:ring-inset focus:ring-1 focus:ring-blue-500/30 selection:bg-blue-500/30"
+              onKeyDown={handleEditorKeyDown}
+              className="absolute inset-0 w-full h-full overflow-auto whitespace-pre p-4 bg-[#0a0d12] text-gray-300 font-mono text-[13px] leading-relaxed resize-none border-none outline-none focus:ring-inset focus:ring-1 focus:ring-blue-500/30 selection:bg-blue-500/30"
               placeholder="Start typing..."
               spellCheck={false}
+              style={{ tabSize: 2 }}
             />
           ) : (
-            <motion.div 
+            <Motion.div 
               key={`view-${activeFile.name}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="absolute inset-0 w-full h-full overflow-auto p-4 bg-[#0a0d12]"
+              className="absolute inset-0 w-full h-full overflow-auto bg-[#0a0d12]"
             >
-              <pre className="text-[13px] text-gray-300 font-mono leading-relaxed whitespace-pre-wrap selection:bg-blue-500/30 pb-20">
-                {activeFile.content}
-              </pre>
-            </motion.div>
+              <div className="min-w-max p-4 pb-20 font-mono text-[13px] leading-relaxed" style={{ tabSize: 2 }}>
+                {displayLines.map((line, index) => (
+                  <div key={`${activeFile.name}-${index}`} className="grid grid-cols-[3rem_1fr]">
+                    <span className="select-none pr-4 text-right text-gray-600">
+                      {index + 1}
+                    </span>
+                    <pre className="m-0 whitespace-pre text-gray-300 selection:bg-blue-500/30">
+                      {line || ' '}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </Motion.div>
           )}
         </AnimatePresence>
       </div>

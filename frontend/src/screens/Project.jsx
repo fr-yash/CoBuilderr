@@ -6,8 +6,10 @@ import { createSocketConnection, receiveMessage, sendMessage, disconnectSocket, 
 import MessageContent from "../components/MessageContent";
 import FileTreePanel from "../components/FileTreePanel";
 import FileViewer from "../components/FileViewer";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Users, UserPlus, X, Send, Loader2, MessageSquare, Code2, Sparkles, AlertCircle } from "lucide-react";
+import LivePreview from "../components/preview/LivePreview";
+import { detectCodeLanguage } from "../utils/detectCodeLanguage";
+import { motion as Motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Users, UserPlus, X, Send, Loader2, MessageSquare, Code2, Sparkles, AlertCircle, FilePlus2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const Project = () => {
@@ -28,6 +30,8 @@ const Project = () => {
   const [editingFiles, setEditingFiles] = useState({});
   const [buildCommand, setBuildCommand] = useState(null);
   const [startCommand, setStartCommand] = useState(null);
+  const [previewBlocks, setPreviewBlocks] = useState([]);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
   const generateUniqueId = () => {
@@ -57,7 +61,7 @@ const Project = () => {
     }
   }, [projectId]);
 
-  const updateTreeRecursively = (tree, pathParts, content) => {
+  const updateTreeRecursively = useCallback((tree, pathParts, content) => {
     if (pathParts.length === 1) {
       if (tree[pathParts[0]] && tree[pathParts[0]].file) {
         tree[pathParts[0]].file.contents = content;
@@ -69,7 +73,181 @@ const Project = () => {
       tree[currentPart] = updateTreeRecursively(tree[currentPart], pathParts, content);
     }
     return tree;
+  }, []);
+
+  const upsertFileInTree = (tree, fileName, content) => {
+    const nextTree = tree ? JSON.parse(JSON.stringify(tree)) : {};
+    const pathParts = fileName.split('/').filter(Boolean);
+    let cursor = nextTree;
+
+    pathParts.slice(0, -1).forEach((part) => {
+      if (!cursor[part] || cursor[part].file) {
+        cursor[part] = {};
+      }
+      cursor = cursor[part];
+    });
+
+    cursor[pathParts[pathParts.length - 1]] = {
+      file: { contents: content },
+    };
+
+    return nextTree;
   };
+
+  const getStarterContentForFile = (fileName) => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+
+    if (extension === 'html') {
+      return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>New Page</title>
+  </head>
+  <body>
+    <main>
+      <h1>Hello Cobuilder</h1>
+    </main>
+  </body>
+</html>
+`;
+    }
+
+    if (extension === 'css') {
+      return `body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+`;
+    }
+
+    if (['js', 'mjs', 'cjs'].includes(extension)) {
+      return `function main() {
+  console.log("Hello Cobuilder");
+}
+
+main();
+`;
+    }
+
+    if (['jsx', 'tsx'].includes(extension)) {
+      return `export default function App() {
+  return (
+    <main>
+      <h1>Hello Cobuilder</h1>
+    </main>
+  );
+}
+`;
+    }
+
+    return "";
+  };
+
+  const getDefaultFileNameForLanguage = (language) => {
+    const normalizedLanguage = detectCodeLanguage("", language);
+
+    if (normalizedLanguage === "html") return "index.html";
+    if (normalizedLanguage === "css") return "style.css";
+    if (normalizedLanguage === "javascript") return "script.js";
+    if (["jsx", "react"].includes(normalizedLanguage)) return "App.jsx";
+
+    return "ai-generated-code.txt";
+  };
+
+  const getLanguageForFile = useCallback((fileName = "", content = "") => {
+    const extension = fileName.split('.').pop()?.toLowerCase();
+    const languageByExtension = {
+      html: "html",
+      css: "css",
+      js: "javascript",
+      mjs: "javascript",
+      cjs: "javascript",
+      jsx: "react",
+      tsx: "react",
+    };
+
+    return detectCodeLanguage(content, languageByExtension[extension]);
+  }, []);
+
+  const flattenFileTree = useCallback((tree, path = '') => {
+    if (!tree || typeof tree !== 'object') return [];
+
+    return Object.entries(tree).flatMap(([name, content]) => {
+      const fullPath = path ? `${path}/${name}` : name;
+
+      if (content?.file) {
+        return [{
+          name: fullPath,
+          content: content.file.contents || "",
+        }];
+      }
+
+      if (typeof content === 'string') {
+        return [{
+          name: fullPath,
+          content,
+        }];
+      }
+
+      if (typeof content === 'object' && content !== null) {
+        return flattenFileTree(content, fullPath);
+      }
+
+      return [];
+    });
+  }, []);
+
+  const getRunnableReactFile = useCallback((files, selectedFile) => {
+    const selectedName = selectedFile.name.split('/').pop()?.toLowerCase() || "";
+    const selectedLanguage = getLanguageForFile(selectedFile.name, selectedFile.content);
+
+    if (["react", "jsx"].includes(selectedLanguage) && !/^main\.(jsx|tsx|js|ts)$/.test(selectedName)) {
+      return selectedFile;
+    }
+
+    const reactFiles = files
+      .map((file) => ({ ...file, language: getLanguageForFile(file.name, file.content) }))
+      .filter((file) => ["react", "jsx"].includes(file.language));
+
+    const appFile = reactFiles.find((file) => /(^|\/)app\.(jsx|tsx|js|ts)$/i.test(file.name));
+    if (appFile) return appFile;
+
+    const componentWithDefaultExport = reactFiles.find((file) =>
+      /export\s+default\s+(function|class|[A-Z][A-Za-z0-9_$]*|\([^)]*\)\s*=>)/.test(file.content)
+    );
+    if (componentWithDefaultExport) return componentWithDefaultExport;
+
+    const componentDefinition = reactFiles.find((file) =>
+      /\b(function|const|let|var|class)\s+[A-Z][A-Za-z0-9_$]*\b/.test(file.content)
+    );
+
+    return componentDefinition || selectedFile;
+  }, [getLanguageForFile]);
+
+  const buildReactPreviewFile = useCallback((files, selectedFile) => {
+    const reactFiles = files
+      .map((file) => ({ ...file, language: getLanguageForFile(file.name, file.content) }))
+      .filter((file) => ["react", "jsx"].includes(file.language));
+
+    const runnableReactFile = getRunnableReactFile(files, selectedFile);
+    const isEntryFile = (fileName = "") => /(^|\/)(main|index)\.(jsx|tsx|js|ts)$/i.test(fileName);
+    const orderedFiles = [
+      ...reactFiles
+        .filter((file) => file.name !== runnableReactFile.name)
+        .filter((file) => !isEntryFile(file.name))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      runnableReactFile,
+    ];
+
+    return {
+      name: runnableReactFile.name,
+      content: orderedFiles
+        .map((file) => `// ${file.name}\n${file.content}`)
+        .join("\n\n"),
+    };
+  }, [getLanguageForFile, getRunnableReactFile]);
 
   const handleSaveFile = useCallback((fileName, newContent) => {
     setOpenFiles(prev => prev.map(file =>
@@ -89,7 +267,138 @@ const Project = () => {
     }
 
     toast.success(`Saved ${fileName.split('/').pop()}`, { icon: '💾' });
-  }, [activeFile, currentFileTree]);
+  }, [activeFile, currentFileTree, updateTreeRecursively]);
+
+  const handleRunActiveFile = useCallback(() => {
+    if (!activeFile) {
+      toast.error("Select a file to run");
+      return;
+    }
+
+    const treeFiles = flattenFileTree(currentFileTree);
+    const openFilesByName = new Map(openFiles.map((file) => [file.name, file.content]));
+    const files = treeFiles.map((file) => ({
+      ...file,
+      content: openFilesByName.get(file.name) ?? file.content,
+    }));
+
+    if (!files.some((file) => file.name === activeFile.name)) {
+      files.push({ name: activeFile.name, content: activeFile.content || "" });
+    }
+
+    const selectedFile = {
+      name: activeFile.name,
+      content: activeFile.content || openFilesByName.get(activeFile.name) || "",
+    };
+    const selectedLanguage = getLanguageForFile(selectedFile.name, selectedFile.content);
+
+    const toBlock = (file) => ({
+      id: file.name,
+      name: file.name,
+      language: getLanguageForFile(file.name, file.content),
+      code: file.content,
+    });
+
+    if (["react", "jsx"].includes(selectedLanguage)) {
+      const reactPreviewFile = buildReactPreviewFile(files, selectedFile);
+      setPreviewBlocks([toBlock(reactPreviewFile)]);
+      setIsPreviewOpen(true);
+      return;
+    }
+
+    const staticFiles = files
+      .map((file) => ({ ...file, language: getLanguageForFile(file.name, file.content) }))
+      .filter((file) => ["html", "css", "javascript"].includes(file.language));
+
+    const selectedBlock = toBlock(selectedFile);
+    const companionBlocks = staticFiles
+      .filter((file) => file.name !== selectedFile.name)
+      .filter((file) => {
+        if (selectedLanguage === "html") return ["css", "javascript"].includes(file.language);
+        if (selectedLanguage === "css") return ["html", "javascript"].includes(file.language);
+        if (selectedLanguage === "javascript") return ["html", "css"].includes(file.language);
+        return false;
+      })
+      .sort((a, b) => {
+        const order = { html: 0, css: 1, javascript: 2 };
+        return order[a.language] - order[b.language];
+      })
+      .map(toBlock);
+
+    const blocks = ["html", "css", "javascript"].includes(selectedLanguage)
+      ? [...companionBlocks, selectedBlock]
+      : [selectedBlock];
+
+    setPreviewBlocks(blocks);
+    setIsPreviewOpen(true);
+  }, [activeFile, buildReactPreviewFile, currentFileTree, flattenFileTree, getLanguageForFile, openFiles]);
+
+  const handleClearPreview = useCallback(() => {
+    setPreviewBlocks([]);
+    setIsPreviewOpen(false);
+  }, []);
+
+  const handleInsertAICode = useCallback((block) => {
+    if (!block?.code?.trim()) {
+      toast.error("No code to insert");
+      return;
+    }
+
+    const language = detectCodeLanguage(block.code, block.language || block.providedLanguage);
+    const fileName = getDefaultFileNameForLanguage(language);
+    const newTree = upsertFileInTree(currentFileTree, fileName, block.code);
+    const insertedFile = { name: fileName, content: block.code, isModified: false };
+
+    setCurrentFileTree(newTree);
+    setOpenFiles((prev) => {
+      const exists = prev.some((file) => file.name === fileName);
+      if (exists) {
+        return prev.map((file) => (file.name === fileName ? insertedFile : file));
+      }
+      return [...prev, insertedFile];
+    });
+    setActiveFile(insertedFile);
+    setEditingFiles((prev) => ({ ...prev, [fileName]: false }));
+
+    emitEvent('update-file-tree', newTree);
+    emitEvent('ai-code:inserted', {
+      fileName,
+      language,
+      insertedBy: user?.email || 'Unknown user',
+      timestamp: new Date().toISOString(),
+    });
+
+    toast.success(`Inserted AI code into ${fileName}`);
+  }, [currentFileTree, user?.email]);
+
+  const handleCreateFile = (requestedFileName) => {
+    const fileName = requestedFileName.trim().replaceAll('\\', '/').replace(/^\/+/, '');
+
+    if (!fileName || fileName.endsWith('/')) {
+      toast.error("Enter a valid file name");
+      return;
+    }
+
+    const existingFiles = flattenFileTree(currentFileTree);
+    if (existingFiles.some((file) => file.name === fileName)) {
+      const existingFile = existingFiles.find((file) => file.name === fileName);
+      handleFileSelect(existingFile.name, existingFile.content);
+      toast.error(`${fileName} already exists`);
+      return;
+    }
+
+    const content = getStarterContentForFile(fileName);
+    const newTree = upsertFileInTree(currentFileTree, fileName, content);
+    const newFile = { name: fileName, content, isModified: false };
+
+    setCurrentFileTree(newTree);
+    setOpenFiles((prev) => [...prev, newFile]);
+    setActiveFile(newFile);
+    setEditingFiles((prev) => ({ ...prev, [fileName]: true }));
+
+    emitEvent('update-file-tree', newTree);
+    toast.success(`Created ${fileName}`);
+  };
 
   const handleCancelEdit = useCallback((fileName) => {
     setEditingFiles(prev => ({ ...prev, [fileName]: false }));
@@ -137,6 +446,36 @@ const Project = () => {
         if (message.sender === "AI") {
           if (message.fileTree) {
             setCurrentFileTree(message.fileTree);
+            
+            // Auto-open first file to display in workspace
+            const openFirstFile = (tree, path = '') => {
+              if (!tree || typeof tree !== 'object') return null;
+
+              for (const [name, content] of Object.entries(tree)) {
+                const fullPath = path ? `${path}/${name}` : name;
+                if (content.file) {
+                  return { name: fullPath, content: content.file.contents };
+                } else if (typeof content === 'string') {
+                  return { name: fullPath, content };
+                } else if (typeof content === 'object' && content !== null) {
+                  const nested = openFirstFile(content, fullPath);
+                  if (nested) return nested;
+                }
+              }
+              return null;
+            };
+            
+            const firstFileToOpen = openFirstFile(message.fileTree);
+            if (firstFileToOpen) {
+              setOpenFiles(prev => {
+                if (!prev.some(f => f.name === firstFileToOpen.name)) {
+                  return [...prev, firstFileToOpen];
+                }
+                return prev;
+              });
+              setActiveFile(firstFileToOpen);
+            }
+
             setBuildCommand(message.buildCommand);
             setStartCommand(message.startCommand);
             toast.success("AI generated new files!", { icon: '🤖' });
@@ -153,9 +492,15 @@ const Project = () => {
       receiveMessage('file-tree-updated', (newTree) => {
         setCurrentFileTree(newTree);
       });
+
+      receiveMessage('ai-code:inserted', (payload) => {
+        if (payload?.insertedBy && payload.insertedBy !== user?.email) {
+          toast.success(`${payload.insertedBy} inserted AI code into ${payload.fileName}`);
+        }
+      });
     }
     return () => disconnectSocket();
-  }, [project]);
+  }, [project, user?.email]);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -240,7 +585,7 @@ const Project = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-modal p-8 text-center max-w-md w-full">
+        <Motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-modal p-8 text-center max-w-md w-full">
           <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="w-8 h-8 text-red-400" />
           </div>
@@ -249,7 +594,7 @@ const Project = () => {
           <Link to="/login" className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl transition-colors font-medium w-full block">
             Return to Login
           </Link>
-        </motion.div>
+        </Motion.div>
       </div>
     );
   }
@@ -266,7 +611,7 @@ const Project = () => {
   if (error || !project) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-modal p-8 text-center max-w-md w-full">
+        <Motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-modal p-8 text-center max-w-md w-full">
           <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
@@ -275,7 +620,7 @@ const Project = () => {
           <Link to="/" className="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white px-6 py-3 rounded-xl transition-colors font-medium block">
             Back to Dashboard
           </Link>
-        </motion.div>
+        </Motion.div>
       </div>
     );
   }
@@ -325,7 +670,7 @@ const Project = () => {
 
               <AnimatePresence>
                 {showUserList && (
-                  <motion.div 
+                  <Motion.div 
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -344,7 +689,7 @@ const Project = () => {
                         </div>
                       )) : <p className="text-xs text-gray-500 py-2">No collaborators yet.</p>}
                     </div>
-                  </motion.div>
+                  </Motion.div>
                 )}
               </AnimatePresence>
             </div>
@@ -374,7 +719,7 @@ const Project = () => {
                 const isAI = message.sender === "AI";
 
                 return (
-                  <motion.div 
+                  <Motion.div 
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     key={message.id} 
@@ -388,14 +733,19 @@ const Project = () => {
                     </div>
                     
                     <div className={`
+                      chat-message-bubble ${isMe ? 'chat-message-bubble-user' : isAI ? 'chat-message-bubble-ai' : 'chat-message-bubble-peer'}
                       max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm
                       ${isMe ? 'bg-blue-600 text-white rounded-tr-sm' : 
                         isAI ? 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/20 rounded-tl-sm' : 
                         'bg-gray-800 text-gray-200 border border-gray-700 rounded-tl-sm'}
                     `}>
-                      <MessageContent message={message} isCurrentUser={isMe} />
+                      <MessageContent
+                        message={message}
+                        isCurrentUser={isMe}
+                        onInsertCode={handleInsertAICode}
+                      />
                     </div>
-                  </motion.div>
+                  </Motion.div>
                 );
               })
             )}
@@ -423,9 +773,10 @@ const Project = () => {
         </div>
 
         {/* Right Side: Code Editor Workspace */}
-        <div className="flex-1 flex flex-col bg-[#0d1117] relative">
+        <div className="flex-1 flex bg-[#0d1117] relative min-w-0">
+          <div className="flex-1 flex flex-col min-w-0">
           {currentFileTree ? (
-            <div className="flex-1 flex w-full">
+            <div className="flex-1 flex w-full min-w-0">
               <div className="w-64 flex-shrink-0 border-r border-gray-800 bg-gray-900/80">
                 <FileTreePanel
                   fileTree={currentFileTree}
@@ -433,9 +784,11 @@ const Project = () => {
                   startCommand={startCommand}
                   onFileSelect={handleFileSelect}
                   activeFile={activeFile}
+                  onRunActiveFile={handleRunActiveFile}
+                  onCreateFile={handleCreateFile}
                 />
               </div>
-              <div className="flex-1 bg-gray-950 overflow-hidden relative">
+              <div className="flex-1 bg-gray-950 overflow-hidden relative min-w-0">
                 <FileViewer
                   openFiles={openFiles}
                   activeFile={activeFile}
@@ -454,7 +807,7 @@ const Project = () => {
               {/* Background gradient blob */}
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/10 via-transparent to-blue-900/10 pointer-events-none" />
               
-              <motion.div 
+              <Motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="text-center max-w-md z-10"
@@ -470,9 +823,24 @@ const Project = () => {
                   <Sparkles className="w-4 h-4" />
                   Try: &quot;@ai create a React todo app&quot;
                 </div>
-              </motion.div>
+                <button
+                  type="button"
+                  onClick={() => handleCreateFile("index.html")}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-blue-500/20 bg-blue-600/10 px-4 py-2 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-600/20"
+                >
+                  <FilePlus2 className="w-4 h-4" />
+                  Create index.html
+                </button>
+              </Motion.div>
             </div>
           )}
+          </div>
+          <LivePreview
+            blocks={previewBlocks}
+            isOpen={isPreviewOpen}
+            onClose={() => setIsPreviewOpen(false)}
+            onClear={handleClearPreview}
+          />
         </div>
 
       </div>
@@ -481,7 +849,7 @@ const Project = () => {
       <AnimatePresence>
         {showAddCollaboratorModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <Motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }} 
               exit={{ opacity: 0 }} 
@@ -489,7 +857,7 @@ const Project = () => {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
             />
             
-            <motion.div 
+            <Motion.div 
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
@@ -545,7 +913,7 @@ const Project = () => {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </Motion.div>
           </div>
         )}
       </AnimatePresence>

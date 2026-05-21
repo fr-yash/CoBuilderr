@@ -1,6 +1,7 @@
 import AppRoutes from './routes/AppRoutes.jsx'
 import { UserProvider } from './context/user.context.jsx'
 import { Toaster } from 'react-hot-toast'
+import ThemeToggle from './components/ThemeToggle.jsx'
 
 const App = () => {
   return (
@@ -14,6 +15,7 @@ const App = () => {
             border: '1px solid #374151'
           }
         }} />
+        <ThemeToggle />
         <AppRoutes />
       </div>
     </UserProvider>
